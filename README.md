@@ -1,50 +1,71 @@
-# vue-2048
+# 2048 · 再走一步
 
-This template should help get you started developing with Vue 3 in Vite.
+Vue + TypeScript 的 2048 游戏。使用 class 编写规则，通过 Vue 插件注册游戏实例，通过扩展插件添加功能，不依赖 Pinia 和路由。
 
-## Recommended IDE Setup
+## 运行
 
-[VS Code](https://code.visualstudio.com/) + [Vue (Official)](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
-
-This project replaces its workspace TypeScript package with [typescript-native-bridge](https://github.com/johnsoncodehk/typescript-native-bridge). Command-line tools use the bridge automatically. To use it in VS Code after installing dependencies, accept the prompt to use the workspace TypeScript version. If the prompt does not appear, run **TypeScript: Select TypeScript Version** and choose **Use Workspace Version**.
-
-## Recommended Browser Setup
-
-- Chromium-based browsers (Chrome, Edge, Brave, etc.):
-  - [Vue.js devtools](https://chromewebstore.google.com/detail/vuejs-devtools/nhdogjmejiglipccpnnnanhbledajbpd)
-  - [Turn on Custom Object Formatter in Chrome DevTools](http://bit.ly/object-formatters)
-- Firefox:
-  - [Vue.js devtools](https://addons.mozilla.org/en-US/firefox/addon/vue-js-devtools/)
-  - [Turn on Custom Object Formatter in Firefox DevTools](https://fxdx.dev/firefox-devtools-custom-object-formatters/)
-
-## Type Support for `.vue` Imports in TS
-
-TypeScript cannot handle type information for `.vue` imports by default, so we replace the `tsc` CLI with `vue-tsc` for type checking. In editors, we need [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) to make the TypeScript language service aware of `.vue` types.
-
-## Customize configuration
-
-See [Vite Configuration Reference](https://vite.dev/config/).
-
-## Project Setup
+Node.js `^22.18.0 || >=24.12.0`，pnpm。
 
 ```sh
 pnpm install
-```
-
-### Compile and Hot-Reload for Development
-
-```sh
 pnpm dev
 ```
 
-### Type-Check, Compile and Minify for Production
-
 ```sh
-pnpm build
+pnpm test        # 游戏规则、存档和插件生命周期测试
+pnpm build       # 类型检查与生产构建
+pnpm lint        # Oxlint + ESLint
 ```
 
-### Lint with [ESLint](https://eslint.org/)
+当前项目保留 Vue RC 与 typescript-native-bridge 的 workspace overrides。VS Code 可选择工作区 TypeScript 版本。
 
-```sh
-pnpm lint
+## 玩法
+
+- 方向键、WASD、棋盘滑动或方向按钮移动。
+- 相同数字合并，每个方块在一次移动中最多合并一次。
+- 有效移动后随机生成一个 2（90%）或 4（10%）；无效移动不生成方块。
+- 支持撤销一步、新游戏、达到 2048 后继续挑战。
+- 自动保存棋盘、得分、最高纪录和继续挑战状态。刷新后恢复进度；撤销历史仅在当前会话保留。浏览器禁用存储时仍可游玩。
+
+## 架构
+
+```text
+src/
+  game/
+    Game2048.ts                  # 纯 TypeScript class、规则、事件与扩展注册
+    plugins/LocalStoragePlugin.ts # class 存档扩展
+  plugins/Game2048Plugin.ts       # Vue install / provide / inject 与响应式适配
+  components/GameBoard.vue        # 棋盘渲染与滑动输入
+  App.vue                        # 游戏界面与键盘输入
+  main.ts                        # 插件注册入口
 ```
+
+Vue 插件注册：
+
+```ts
+createApp(App)
+  .use(
+    new Game2048Plugin({
+      extensions: [new LocalStoragePlugin(window.localStorage)],
+    }),
+  )
+  .mount('#app')
+```
+
+组件内用 `useGame2048()` 获取同一个响应式 class 实例，调用 `move()`、`undo()`、`restart()`、`continueGame()`，通过 `game.state` 读取状态。
+
+游戏扩展实现 `GameExtension`，可通过 `extensions` 注册，也可调用 `game.use()`。用 `subscribe()` 监听有效状态变化；`install()` 返回清理函数，在 Vue 应用卸载时自动执行。例如：
+
+```ts
+import type { Game2048, GameExtension } from './src/game/Game2048'
+
+class ScoreLoggerPlugin implements GameExtension {
+  readonly name = 'score-logger'
+
+  install(game: Game2048) {
+    return game.subscribe(() => console.log(game.state.score))
+  }
+}
+```
+
+扩展名称必须唯一。核心引擎不依赖 Vue 或浏览器，可独立测试，也可接入其他界面。
